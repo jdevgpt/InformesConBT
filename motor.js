@@ -351,7 +351,7 @@
     }
     const chain = id => { const out = []; let g = 0; while (id && styles[id] && g++ < 10) { out.unshift(styles[id]); const b = kid(styles[id], 'basedOn'); id = b ? wAttr(b, 'val') : null; } return out; };
     function pProps(id) {
-      const o = { after: defAfter, before: 0, line: defLine, jc: null, indL: 0, hang: 0, first: 0, numId: null, keepNext: false, sz: defSz, b: false, font: defFont, caps: false, u: false };
+      const o = { after: defAfter, before: 0, line: defLine, jc: null, indL: 0, indR: 0, hang: 0, first: 0, numId: null, keepNext: false, sz: defSz, b: false, font: defFont, caps: false, u: false };
       const list = chain(id || defaultParaStyle);
       if (id && defaultParaStyle && id !== defaultParaStyle && !list.some(s => wAttr(s, 'styleId') === defaultParaStyle)) list.unshift(...chain(defaultParaStyle));
       for (const s of list) {
@@ -370,6 +370,7 @@
     const ind = kid(pPr, 'ind');
     if (ind) {
       const l = wAttr(ind, 'left') || wAttr(ind, 'start'); if (l) o.indL = +l;
+      const rt = wAttr(ind, 'right') || wAttr(ind, 'end'); if (rt) o.indR = +rt; // sangría derecha
       if (wAttr(ind, 'hanging')) { o.hang = +wAttr(ind, 'hanging'); o.first = 0; }
       if (wAttr(ind, 'firstLine')) { o.first = +wAttr(ind, 'firstLine'); o.hang = 0; }
     }
@@ -502,7 +503,7 @@
       }
       const tabStop = 35.4; // 1,25 cm
       const leadOffset = leadTabs * tabStop;
-      const width = cellW - indL;
+      const width = cellW - indL - T(o.indR || 0);
       const fsize = items.find(i => i.type === 'text') ? items.find(i => i.type === 'text').size : o.sz / 2;
       const lineH = fsize * 1.17 * (o.line / 240);
       // trocear en palabras
