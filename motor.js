@@ -207,7 +207,7 @@
 
     const map = {
       NOMBRE: data.nombre, FECHA: data.fecha, CENTRO: data.centro, DIRECCION: data.direccion,
-      'DIRECCIÓN': data.direccion, POBLACION: data.poblacion, 'POBLACIÓN': data.poblacion
+      'DIRECCIÓN': data.direccion, POBLACION: data.poblacion, 'POBLACIÓN': data.poblacion, PROVINCIA: data.provincia || 'Badajoz'
     };
 
     // 1) Tabla de defectos

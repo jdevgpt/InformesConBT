@@ -241,7 +241,10 @@ h2{letter-spacing:.1em}
         <label class="f"><span>Fecha de revisión</span><input type="date" id="fFecha"></label>
       </div>
       <label class="f"><span>Dirección</span><input type="text" id="fDir" autocomplete="off" placeholder="Se rellena sola al poner el centro"><span class="hint" id="dirHint"></span></label>
-      <label class="f"><span>Término municipal (población)</span><input type="text" id="fPob" autocomplete="off" placeholder="p. ej. Mérida"></label>
+      <div class="grid2">
+        <label class="f"><span>Término municipal (población)</span><input type="text" id="fPob" autocomplete="off" placeholder="p. ej. Mérida"></label>
+        <label class="f"><span>Provincia</span><select id="fProv"></select></label>
+      </div>
     </div>
 
     <div class="card">
@@ -307,7 +310,7 @@ h2{letter-spacing:.1em}
         <label class="btn small"><input type="file" id="tplFile" accept=".docx" hidden>Cargar otra plantilla .docx</label>
         <button class="btn small" id="btnTplReset" hidden>Volver a la plantilla de la app</button>
       </div>
-      <span class="hint">Campos: [NOMBRE] [FECHA] [CENTRO] [DIRECCION] [POBLACION] y en la tabla [CODIGO_APOYO] [CENTRO] [COD_DEF] [DES_DEF] [OBSERV].</span>
+      <span class="hint">Campos: [NOMBRE] [FECHA] [CENTRO] [DIRECCION] [POBLACION] [PROVINCIA] y en la tabla [CODIGO_APOYO] [CENTRO] [COD_DEF] [DES_DEF] [OBSERV].</span>
     </div>
     <div class="card">
       <h2>Copia de seguridad</h2>
@@ -429,7 +432,7 @@ function pintarLista() {
       ${l.centros.map(c => `
         <div class="centro" data-c="${c.id}" tabindex="0" role="button">
           <span class="cd">${esc(c.centro || 'Sin nombre')}</span>
-          <span class="meta">${esc(fechaES(c.fecha))}${c.poblacion ? ' · ' + esc(c.poblacion) : ''}${c.direccion ? ' · ' + esc(c.direccion) : ''}</span>
+          <span class="meta">${esc(fechaES(c.fecha))}${c.poblacion ? ' · ' + esc(c.poblacion) + ' (' + esc(c.provincia || 'Badajoz') + ')' : ''}${c.direccion ? ' · ' + esc(c.direccion) : ''}</span>
           <span class="acts">${estadoCentro(c)}<button class="btn small" data-a="dlc" title="Descargar Word y PDF"><svg class="i"><use href="#i-dl"/></svg></button></span>
         </div>`).join('') || '<div class="centro muted" style="cursor:default">Sin centros todavía</div>'}
     </article>`).join('');
@@ -493,7 +496,7 @@ function hojaDescarga(lineas, titulo) {
 // ---------- editor de centro ----------
 function nuevoCentro(lineaId) {
   const l = findLinea(lineaId);
-  const c = { id: uid(), centro: '', fecha: hoy(), direccion: '', dirAuto: '', poblacion: '', sinDefectos: false, defectos: [], foto: null };
+  const c = { id: uid(), centro: '', fecha: hoy(), direccion: '', dirAuto: '', poblacion: '', provincia: ls.get('ibt_provincia', 'Badajoz'), sinDefectos: false, defectos: [], foto: null };
   l.centros.push(c); save(); abrirCentro(lineaId, c.id); setTimeout(() => $('fCentro').focus(), 50);
 }
 async function abrirCentro(lineaId, centroId) {
@@ -501,7 +504,7 @@ async function abrirCentro(lineaId, centroId) {
   const l = findLinea(lineaId), c = findCentro();
   if (!c) { cur = null; pintarLista(); return vista('lista'); }
   $('edLinea').textContent = l.nombre;
-  $('fCentro').value = c.centro; $('fFecha').value = c.fecha || ''; $('fDir').value = c.direccion; $('fPob').value = c.poblacion; $('fSin').checked = !!c.sinDefectos;
+  $('fCentro').value = c.centro; $('fFecha').value = c.fecha || ''; $('fDir').value = c.direccion; $('fPob').value = c.poblacion; $('fProv').value = c.provincia || 'Badajoz'; $('fSin').checked = !!c.sinDefectos;
   limpiarFormDef(); pintarCentro(); vista('editor');
   dirHint(c);
   const f = c.foto ? await idb.get('foto:' + c.id) : null;
@@ -547,6 +550,10 @@ $('fCentro').addEventListener('input', () => {
 $('fFecha').addEventListener('input', () => { const c = findCentro(); c.fecha = $('fFecha').value; save(); });
 $('fDir').addEventListener('input', () => { const c = findCentro(); c.direccion = $('fDir').value; save(); dirHint(c); });
 $('fPob').addEventListener('input', () => { const c = findCentro(); c.poblacion = $('fPob').value; save(); });
+// provincias de España; se recuerda la última elegida para los centros nuevos
+const PROVINCIAS = ['A Coruña', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Barcelona', 'Bizkaia', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ceuta', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gipuzkoa', 'Girona', 'Granada', 'Guadalajara', 'Huelva', 'Huesca', 'Illes Balears', 'Jaén', 'La Rioja', 'Las Palmas', 'León', 'Lleida', 'Lugo', 'Madrid', 'Málaga', 'Melilla', 'Murcia', 'Navarra', 'Ourense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Zamora', 'Zaragoza'];
+$('fProv').innerHTML = PROVINCIAS.map(p => `<option>${esc(p)}</option>`).join('');
+$('fProv').addEventListener('change', () => { const c = findCentro(); c.provincia = $('fProv').value; ls.set('ibt_provincia', c.provincia); save(); });
 $('fSin').addEventListener('change', () => { const c = findCentro(); c.sinDefectos = $('fSin').checked; save(); pintarCentro(); });
 $('btnVolver').onclick = () => { cur = null; pintarLista(); vista('lista'); };
 $('btnBorrarCentro').onclick = () => {
@@ -719,7 +726,7 @@ async function generar(c, formatos) {
   const firma = ls.get('ibt_firma', null);
   const fotoBlob = c.foto ? await idb.get('foto:' + c.id) : null;
   const data = {
-    nombre: ls.get('ibt_nombre', ''), fecha: fechaES(c.fecha), centro: UP(c.centro), direccion: c.direccion.trim(), poblacion: c.poblacion.trim(),
+    nombre: ls.get('ibt_nombre', ''), fecha: fechaES(c.fecha), centro: UP(c.centro), direccion: c.direccion.trim(), poblacion: c.poblacion.trim(), provincia: c.provincia || 'Badajoz',
     sinDefectos: !!c.sinDefectos, defectos: c.defectos,
     firma: firma ? { bytes: dataURLBytes(firma.data), type: 'image/png', w: firma.w, h: firma.h } : null,
     foto: fotoBlob ? { bytes: new Uint8Array(await fotoBlob.arrayBuffer()), type: 'image/jpeg', w: c.foto.w, h: c.foto.h } : null
