@@ -175,7 +175,7 @@
     const pPr = doc.createElementNS(W, 'w:pPr');
     const refStyle = refPara && kid(refPara, 'pPr') && kid(kid(refPara, 'pPr'), 'pStyle');
     if (refStyle) pPr.appendChild(refStyle.cloneNode(true)); // misma fuente que el texto del informe
-    const sp = doc.createElementNS(W, 'w:spacing'); sp.setAttributeNS(W, 'w:before', '240'); sp.setAttributeNS(W, 'w:after', '240');
+    const sp = doc.createElementNS(W, 'w:spacing'); sp.setAttributeNS(W, 'w:before', '240'); sp.setAttributeNS(W, 'w:beforeAutospacing', '0'); sp.setAttributeNS(W, 'w:after', '240'); sp.setAttributeNS(W, 'w:afterAutospacing', '0');
     const ind = doc.createElementNS(W, 'w:ind'); ind.setAttributeNS(W, 'w:left', '0'); ind.setAttributeNS(W, 'w:right', '0'); ind.setAttributeNS(W, 'w:firstLine', '0');
     const jc = doc.createElementNS(W, 'w:jc'); jc.setAttributeNS(W, 'w:val', 'center');
     pPr.appendChild(sp); pPr.appendChild(ind); pPr.appendChild(jc); p.appendChild(pPr);
@@ -350,8 +350,10 @@
       }
     }
     const chain = id => { const out = []; let g = 0; while (id && styles[id] && g++ < 10) { out.unshift(styles[id]); const b = kid(styles[id], 'basedOn'); id = b ? wAttr(b, 'val') : null; } return out; };
-    function pProps(id) {
+    function pProps(id, tblStyle) {
       const o = { after: defAfter, before: 0, line: defLine, jc: null, indL: 0, indR: 0, hang: 0, first: 0, numId: null, keepNext: false, sz: defSz, b: false, font: defFont, caps: false, u: false };
+      // dentro de una tabla, el estilo de tabla va antes que el del párrafo (p. ej. «Tabla con cuadrícula» quita el espacio después)
+      if (tblStyle) for (const ts of chain(tblStyle)) { const pPr = kid(ts, 'pPr'), rPr = kid(ts, 'rPr'); if (pPr) applyPPr(o, pPr); if (rPr) applyRPr(o, rPr); }
       const list = chain(id || defaultParaStyle);
       if (id && defaultParaStyle && id !== defaultParaStyle && !list.some(s => wAttr(s, 'styleId') === defaultParaStyle)) list.unshift(...chain(defaultParaStyle));
       for (const s of list) {
@@ -361,11 +363,20 @@
       }
       return o;
     }
-    return { pProps, defaultParaStyle, runSize: id => pProps(id).sz };
+    // estilos de carácter (p. ej. «Fuerte» = negrita)
+    function charStyle(o, id) { for (const st of chain(id)) { const rPr = kid(st, 'rPr'); if (rPr) applyRPr(o, rPr); } }
+    return { pProps, charStyle, defaultParaStyle, runSize: id => pProps(id).sz };
   }
   function applyPPr(o, pPr) {
     const sp = kid(pPr, 'spacing');
-    if (sp) { if (wAttr(sp, 'after') != null && wAttr(sp, 'after') !== '') o.after = +wAttr(sp, 'after'); if (wAttr(sp, 'before')) o.before = +wAttr(sp, 'before'); if (wAttr(sp, 'line') && (wAttr(sp, 'lineRule') || 'auto') === 'auto') o.line = +wAttr(sp, 'line'); }
+    if (sp) {
+      if (wAttr(sp, 'after') != null && wAttr(sp, 'after') !== '') o.after = +wAttr(sp, 'after');
+      if (wAttr(sp, 'before')) o.before = +wAttr(sp, 'before');
+      if (wAttr(sp, 'line') && (wAttr(sp, 'lineRule') || 'auto') === 'auto') o.line = +wAttr(sp, 'line');
+      const ba = wAttr(sp, 'beforeAutospacing'), aa = wAttr(sp, 'afterAutospacing');
+      if (ba) o.beforeAuto = !['0', 'false'].includes(ba);
+      if (aa) o.afterAuto = !['0', 'false'].includes(aa);
+    }
     const jc = kid(pPr, 'jc'); if (jc) o.jc = wAttr(jc, 'val');
     const ind = kid(pPr, 'ind');
     if (ind) {
@@ -463,10 +474,10 @@
     }
 
     // Convierte un párrafo Word a un bloque medible
-    async function paraBlock(p, rels, baseDir, cellW) {
+    async function paraBlock(p, rels, baseDir, cellW, tblStyle) {
       const pPr = kid(p, 'pPr');
       const sid = pPr && kid(pPr, 'pStyle') ? wAttr(kid(pPr, 'pStyle'), 'val') : null;
-      const o = st.pProps(sid);
+      const o = st.pProps(sid, tblStyle);
       if (pPr) applyPPr(o, pPr);
       const pRPr = pPr && kid(pPr, 'rPr');
       const anchors = [];
@@ -476,7 +487,9 @@
       for (const r of runs) {
         if (r.parentNode.localName === 'del') continue;
         const rp = { sz: o.sz, b: o.b, font: o.font, caps: o.caps, u: false };
-        const rPr = kid(r, 'rPr'); if (rPr) applyRPr(rp, rPr);
+        const rPr = kid(r, 'rPr');
+        const rSt = rPr && kid(rPr, 'rStyle'); if (rSt) st.charStyle(rp, wAttr(rSt, 'val'));
+        if (rPr) applyRPr(rp, rPr);
         for (const c of Array.from(r.childNodes)) {
           if (c.nodeType !== 1) continue;
           if (c.localName === 't') { if (c.textContent.length) { const tx = rp.caps ? c.textContent.toLocaleUpperCase('es-ES') : c.textContent; items.push({ type: 'text', t: tx, font: pickFont(rp.font, rp.b), u: rp.u, size: rp.sz / 2 }); if (c.textContent.trim()) sawContent = true; } }
@@ -504,8 +517,10 @@
       const tabStop = 35.4; // 1,25 cm
       const leadOffset = leadTabs * tabStop;
       const width = cellW - indL - T(o.indR || 0);
-      const fsize = items.find(i => i.type === 'text') ? items.find(i => i.type === 'text').size : o.sz / 2;
-      const lineH = fsize * 1.17 * (o.line / 240);
+      let markSz = o.sz;
+      if (pRPr) { const mk = { sz: o.sz }; const rs = kid(pRPr, 'rStyle'); if (rs) st.charStyle(mk, wAttr(rs, 'val')); applyRPr(mk, pRPr); markSz = mk.sz; }
+      const fsize = items.find(i => i.type === 'text') ? items.find(i => i.type === 'text').size : markSz / 2;
+      const lineH = fsize * 1.15 * (o.line / 240); // interlineado sencillo de Times/Arial ≈ 1,15 × tamaño
       // trocear en palabras
       const words = [];
       for (const it of items) {
@@ -521,12 +536,14 @@
         }
       }
       // líneas
+      let endsBr = false;
       const lines = []; let cur = { items: [], w: 0, h: lineH, x0: 0 };
       const startX = (i) => (i === 0 ? first + leadOffset : leadOffset);
       const maxW = i => width - startX(i);
       const push = () => { while (cur.items.length && cur.items[cur.items.length - 1].type === 'space') { cur.w -= cur.items.pop().w; } lines.push(cur); cur = { items: [], w: 0, h: lineH }; };
       for (const wd of words) {
-        if (wd.type === 'br') { push(); continue; }
+        if (wd.type === 'br') { push(); endsBr = true; continue; }
+        endsBr = false;
         if (wd.type === 'space') { if (cur.items.length) { cur.items.push(wd); cur.w += wd.w; } continue; }
         const ww = wd.w;
         if (cur.w + ww > maxW(lines.length) && cur.items.length) push();
@@ -544,18 +561,19 @@
         }
         cur.items.push(wd); cur.w += ww;
       }
-      if (cur.items.length || !lines.length) push();
-      const before = T(o.before), after = T(o.after);
+      if (cur.items.length || !lines.length || endsBr) push(); // un salto de línea final deja una línea en blanco, como en Word
+      const before = o.beforeAuto ? 14 : T(o.before), after = o.afterAuto ? 14 : T(o.after);
       const h = before + lines.reduce((s, l) => s + l.h, 0) + after;
       return {
-        kind: 'p', h, before, after, lines, indL, first, leadOffset, width, jc: o.jc, bullet, fsize, keepNext: o.keepNext,
+        kind: 'p', h, before, after, beforeAuto: !!o.beforeAuto, afterAuto: !!o.afterAuto, numId: o.numId && o.numId !== '0' ? o.numId : null, lines, indL, first, leadOffset, width, jc: o.jc, bullet, fsize, keepNext: o.keepNext,
         pageBreakBefore: !!(pPr && kid(pPr, 'pageBreakBefore')) || all(p, 'br').some(b => wAttr(b, 'type') === 'page'),
-        draw(page, x, yTop) {
+        draw(page, x, yTop, spaceBefore) {
+          const sb = spaceBefore == null ? before : spaceBefore;
           for (const an of anchors) {
             const ax = an.relH === 'page' ? an.offX : x + an.offX;
-            page.drawImage(an.img, { x: ax, y: yTop - an.offY - an.h, width: an.w, height: an.h });
+            page.drawImage(an.img, { x: ax, y: yTop - sb - an.offY - an.h, width: an.w, height: an.h });
           }
-          let y = yTop - before;
+          let y = yTop - sb;
           const fw = words.find(w2 => w2.type === 'word'); const bf = fw ? fw.font : fR;
           lines.forEach((ln, i) => {
             const sx = x + indL + (i === 0 ? first : 0) + leadOffset;
@@ -589,7 +607,9 @@
       let total = grid.reduce((a, b) => a + b, 0);
       const maxW = PW - 2 * 28;
       const scale = total > maxW ? maxW / total : 1;
-      const tblPr = kid(tbl, 'tblPr'); const tjc = tblPr && kid(tblPr, 'jc') ? wAttr(kid(tblPr, 'jc'), 'val') : 'left';
+      const tblPr = kid(tbl, 'tblPr');
+      const tblStyle = tblPr && kid(tblPr, 'tblStyle') ? wAttr(kid(tblPr, 'tblStyle'), 'val') : null;
+      const tjc = tblPr && kid(tblPr, 'jc') ? wAttr(kid(tblPr, 'jc'), 'val') : 'left';
       const cols = grid.map(g => g * scale);
       total = cols.reduce((a, b) => a + b, 0);
       const rows = [];
@@ -604,12 +624,14 @@
           const shd = tcPr && kid(tcPr, 'shd'); const fill = shd ? wAttr(shd, 'fill') : null;
           const vAlignEl = tcPr && kid(tcPr, 'vAlign');
           const blocks = [];
-          for (const p of kids(tc, 'p')) blocks.push(await paraBlock(p, rels, baseDir, w - 10.8));
-          const h = blocks.reduce((s, b) => s + b.h, 0) + 4;
+          for (const p of kids(tc, 'p')) blocks.push(await paraBlock(p, rels, baseDir, w - 10.8, tblStyle));
+          const h = blocks.reduce((s, b) => s + b.h, 0) + 0.5;
           cells.push({ x: cols.slice(0, ci).reduce((a, b) => a + b, 0), w, fill: fill && fill !== 'auto' ? fill : null, blocks, h, vAlign: vAlignEl ? wAttr(vAlignEl, 'val') : 'top' });
           ci += span;
         }
-        const h = Math.max(14, ...cells.map(c => c.h));
+        const trH = trPr && kid(trPr, 'trHeight');
+        const minH = trH ? T(+wAttr(trH, 'val') || 0) : 0; // altura mínima de la fila
+        const h = trH && wAttr(trH, 'hRule') === 'exact' ? minH : Math.max(minH, 12, ...cells.map(c => c.h));
         rows.push({ header, cells, h });
       }
       const offX = tjc === 'center' ? (CW - total) / 2 : (tjc === 'right' || tjc === 'end') ? CW - total : 0;
@@ -621,7 +643,7 @@
       for (const c of row.cells) {
         if (c.fill && /^[0-9a-f]{6}$/i.test(c.fill)) page.drawRectangle({ x: x + c.x, y: yTop - row.h, width: c.w, height: row.h, color: hex(c.fill) });
         page.drawRectangle({ x: x + c.x, y: yTop - row.h, width: c.w, height: row.h, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
-        let y = yTop - 2;
+        let y = yTop; // márgenes de celda arriba/abajo = 0 (tabla normal de Word)
         if (c.vAlign === 'center') y -= (row.h - c.h) / 2;
         for (const b of c.blocks) { b.draw(page, x + c.x + 5.4, y); y -= b.h; }
       }
@@ -675,9 +697,9 @@
     }
     const footerH = footer.reduce((s, b) => s + (b.kind === 'tbl' ? b.rows.reduce((a, r) => a + r.h, 0) : b.kind === 'anchor' ? 0 : b.h), 0);
 
-    let page, y;
+    let page, y, prev = null;
     const newPage = () => {
-      page = pdf.addPage([PW, PH]); y = PH - MT;
+      page = pdf.addPage([PW, PH]); y = PH - MT; prev = null;
       drawHF(page, header, PH - T(geom.header));
       drawHF(page, footer, T(geom.footer) + footerH);
     };
@@ -695,9 +717,19 @@
     const blockH = b => b.kind === 'tbl' ? b.rows.reduce((s, r) => s + r.h, 0) : b.h;
     const pageCap = PH - MT - bottom;
 
+    // Espaciado entre párrafos como Word: con espaciado automático (HTML) no se suman los espacios,
+    // entre elementos de la misma lista no hay espacio y arriba de página no se aplica el automático.
+    const atTop = () => y >= PH - MT - 0.5;
+    const gapFor = (b, top) => {
+      const bef = top && b.beforeAuto ? 0 : b.before;
+      if (!prev || top) return bef;
+      if (prev.numId && b.numId && prev.numId === b.numId && (prev.afterAuto || b.beforeAuto)) return 0;
+      if (prev.afterAuto || b.beforeAuto) return Math.max(prev.after, bef);
+      return prev.after + bef;
+    };
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
-      if (b.kind === 'p' && b.pageBreakBefore && y < PH - MT - 1) newPage();
+      if (b.kind === 'p' && b.pageBreakBefore && !atTop()) newPage();
       // mantener con el siguiente: calcular el grupo encadenado
       if (b.kind === 'p' && b.keepNext) {
         let gh = 0, j = i;
@@ -709,9 +741,12 @@
         if (gh <= pageCap && y - gh < bottom) newPage();
       }
       if (b.kind === 'p') {
-        if (y - b.h < bottom && y < PH - MT - 1) newPage();
-        b.draw(page, ML, y); y -= b.h;
+        const lh = b.h - b.before - b.after;
+        let g = gapFor(b, atTop());
+        if (y - g - lh < bottom && !atTop()) { newPage(); g = gapFor(b, true); }
+        b.draw(page, ML, y, g); y -= g + lh; prev = b;
       } else {
+        if (prev) y -= prev.after;
         const hdrRows = b.rows.filter(r => r.header);
         let first = true;
         for (const r of b.rows) {
@@ -721,6 +756,7 @@
           }
           drawRow(page, r, ML + b.offX, y); y -= r.h; first = false;
         }
+        prev = { after: 0, before: 0 };
       }
     }
     return pdf.save();
