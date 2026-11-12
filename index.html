@@ -194,6 +194,10 @@ h2{letter-spacing:.1em}
 @media (max-width:430px){header.top .jd-tile{display:none}}
 
 </style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Informe BT">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -789,6 +793,10 @@ async function descargarLote(lineas, formatos, enZip) {
 // ---------- arranque ----------
 pintarLista(); pintarAjustes(); vista('lista');
 cargarDirecciones();
+</script>
+<script>/* App instalable y sin conexión */
+if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+try{if(navigator.storage&&navigator.storage.persist&&(matchMedia('(display-mode: standalone)').matches||navigator.standalone))navigator.storage.persist();}catch(e){}
 </script>
 </body>
 </html>
