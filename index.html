@@ -828,7 +828,15 @@ pintarLista(); pintarAjustes(); vista('lista');
 cargarDirecciones();
 </script>
 <script>/* App instalable y sin conexión */
-if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+(function(){if(!('serviceWorker' in navigator)||location.protocol.indexOf('http')!==0)return;
+var habia=!!navigator.serviceWorker.controller,reg=null,ult=0;
+window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(r){reg=r;}).catch(function(){});});
+function buscar(){if(reg&&navigator.onLine&&Date.now()-ult>60000){ult=Date.now();reg.update().catch(function(){});}}
+document.addEventListener('visibilitychange',function(){if(!document.hidden)buscar();});
+navigator.serviceWorker.addEventListener('controllerchange',function(){if(!habia||document.getElementById('jdevAct'))return;
+var d=document.createElement('div');d.id='jdevAct';d.setAttribute('style','position:fixed;left:12px;right:12px;bottom:16px;z-index:99999;display:flex;align-items:center;gap:10px;background:#262A2F;color:#fff;border-radius:14px;padding:10px 10px 10px 14px;box-shadow:0 6px 18px rgba(0,0,0,.3);font:600 15px system-ui,sans-serif');
+d.innerHTML='<span style="flex:1">Hay una versi\u00f3n nueva de la app</span><button style="height:38px;padding:0 14px;border-radius:10px;border:none;background:#EE6A1C;color:#fff;font:700 15px system-ui,sans-serif">Actualizar</button>';
+d.querySelector('button').onclick=function(){location.reload();};document.body.appendChild(d);});})();
 try{if(navigator.storage&&navigator.storage.persist&&(matchMedia('(display-mode: standalone)').matches||navigator.standalone))navigator.storage.persist();}catch(e){}
 </script>
 </body>
