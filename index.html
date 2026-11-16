@@ -228,6 +228,14 @@ h2{letter-spacing:.1em}
         <button class="btn small primary" id="btnLinea"><svg class="i"><use href="#i-plus"/></svg>Nueva línea</button>
       </div>
     </div>
+    <form class="card" id="rapForm" autocomplete="off">
+      <h2>Añadir centro por número</h2>
+      <div class="row" style="flex-wrap:nowrap">
+        <input type="text" id="rapCD" class="code up" inputmode="numeric" placeholder="Nº de CD (la línea se pone sola)" style="flex:1;min-width:0">
+        <button class="btn primary" id="rapBtn"><svg class="i"><use href="#i-plus"/></svg><span>Añadir</span></button>
+      </div>
+      <span class="hint" id="rapPista"></span>
+    </form>
     <div id="listaLineas" class="wrap" style="gap:14px"></div>
   </section>
 
@@ -342,6 +350,7 @@ h2{letter-spacing:.1em}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="motor.js"></script>
+<script src="lineas.js"></script>
 <script>
 'use strict';
 // ---------- Tabla de defectos BT BEL011 ----------
@@ -453,6 +462,30 @@ $('listaLineas').addEventListener('click', e => {
 $('listaLineas').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.centro[data-c]')) e.target.click(); });
 
 $('btnLinea').onclick = () => pedirTexto('Nueva línea', '', v => { S.lineas.unshift({ id: uid(), nombre: v, centros: [] }); save(); pintarLista(); });
+// ---------- añadir centro por número (la línea sale de lineas.json) ----------
+function pistaRap() {
+  const n = UP($('rapCD').value), h = $('rapPista');
+  if (!n) { h.className = 'hint'; h.textContent = ''; return; }
+  const l = LineasCD.buscar(n);
+  if (l === undefined) { h.className = 'hint'; h.textContent = 'Cargando base de centros…'; LineasCD.cargar().then(j => { if (j) pistaRap(); }); }
+  else if (l) { h.className = 'hint ok'; h.textContent = '✓ Línea ' + l; }
+  else { h.className = 'hint bad'; h.textContent = 'No está en la base: crea la línea a mano y añade el centro dentro.'; }
+}
+$('rapCD').addEventListener('input', pistaRap);
+$('rapForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const n = UP($('rapCD').value); if (!n) return $('rapCD').focus();
+  let nom = LineasCD.buscar(n);
+  if (nom === undefined) { await LineasCD.cargar(); nom = LineasCD.buscar(n); }
+  if (!nom) { pistaRap(); return toast('Ese centro no está en la base de datos', true); }
+  let l = S.lineas.find(x => x.nombre.trim().toUpperCase() === nom.toUpperCase());
+  if (!l) { l = { id: uid(), nombre: nom, centros: [] }; S.lineas.unshift(l); save(); }
+  const ya = l.centros.find(c => UP(c.centro) === n);
+  $('rapCD').value = ''; pistaRap();
+  if (ya) { toast('Ese centro ya estaba en la línea ' + l.nombre); return abrirCentro(l.id, ya.id); }
+  nuevoCentro(l.id);
+  $('fCentro').value = n; $('fCentro').dispatchEvent(new Event('input'));
+});
 $('btnTodo').onclick = () => { const ls2 = S.lineas.filter(l => l.centros.length); if (!ls2.length) return toast('No hay centros para descargar', true); hojaDescarga(ls2, 'Descargar todas las líneas'); };
 
 function borrarLinea(l) {
