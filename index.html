@@ -836,6 +836,49 @@ cargarDirecciones();
   history.replaceState(null, '', location.pathname);
   $('rapCD').value = cd; $('rapForm').requestSubmit();
 })();
+// Rellenar un centro desde la app del KMZ + ANEXO III (kmzexcelbt, misma web).
+// Llega en localStorage 'jdev_kmz_informe': { centro, fecha (aaaa-mm-dd), defectos:[{apoyo,cod,des,linea,obs}] }.
+// Pone CD, fecha, dirección de la base de datos y la tabla de defectos; población, provincia y foto las pone el usuario.
+async function importarDesdeKmz() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem('jdev_kmz_informe') || 'null'); } catch (e) {}
+  if (!p || !p.centro) return;
+  try { localStorage.removeItem('jdev_kmz_informe'); } catch (e) {}
+  const n = UP(p.centro).replace(/^0+(?=\d)/, '');
+  const defs = (p.defectos || []).map(d => {
+    const cod = UP(d.cod);
+    return { id: uid(), apoyo: UP(d.apoyo), cod, des: UP(DEF_MAP[cod] ? DEF_MAP[cod].d : d.des), linea: UP(d.linea || n), obs: UP(d.obs) };
+  });
+  const aplicar = (l, c) => {
+    if (p.fecha) c.fecha = p.fecha;
+    c.defectos = defs; c.sinDefectos = !defs.length; save();
+    abrirCentro(l.id, c.id);
+    Promise.resolve(cargarDirecciones()).then(() => { if (findCentro() === c) { aplicarDir(c); save(); } });
+    toast(`Centro ${n} rellenado desde el KMZ (${defs.length ? defs.length + ' defecto' + (defs.length > 1 ? 's' : '') : 'sin defectos'}). Revisa dirección, población y provincia y pon la foto del ANEXO I.`);
+  };
+  let l0 = null, c0 = null;
+  S.lineas.forEach(l => l.centros.forEach(c => { if (!c0 && UP(c.centro).replace(/^0+(?=\d)/, '') === n) { l0 = l; c0 = c; } }));
+  if (c0) {
+    confirmar(`El centro ${n} ya está en la línea ${l0.nombre}. ¿Sustituir su fecha y su tabla de defectos por las del KMZ? Se mantienen dirección, población, provincia y foto.`, 'Sustituir', () => aplicar(l0, c0));
+    return;
+  }
+  await LineasCD.cargar();
+  const nom = LineasCD.buscar(n) || 'SIN LÍNEA';
+  let l = S.lineas.find(x => x.nombre.trim().toUpperCase() === String(nom).toUpperCase());
+  if (!l) { l = { id: uid(), nombre: nom, centros: [] }; S.lineas.unshift(l); }
+  const c = { id: uid(), centro: n, fecha: hoy(), direccion: '', dirAuto: '', poblacion: '', provincia: ls.get('ibt_provincia', 'Badajoz'), sinDefectos: false, defectos: [], foto: null };
+  l.centros.push(c); save();
+  aplicar(l, c);
+}
+// Solo al cargar la página (la app del KMZ siempre la abre o la recarga), para no importar dos veces.
+if (new URLSearchParams(location.search).get('kmz')) history.replaceState(null, '', location.pathname);
+importarDesdeKmz();
+// Si la app está abierta en otra pestaña o ventana y cambian los datos, se recargan para no pisarlos al guardar.
+window.addEventListener('storage', e => {
+  if (e.key !== 'ibt_estado' || !e.newValue) return;
+  try { S = JSON.parse(e.newValue); } catch (x) { return; }
+  if (cur && findCentro()) abrirCentro(cur.lineaId, cur.centroId); else { cur = null; pintarLista(); vista('lista'); }
+});
 </script>
 <script>/* App instalable y sin conexión */
 (function(){if(!('serviceWorker' in navigator)||location.protocol.indexOf('http')!==0)return;
