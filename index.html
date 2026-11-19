@@ -782,11 +782,15 @@ function guardar(blob, nombre) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
 }
 const pausa = ms => new Promise(r => setTimeout(r, ms));
+// Avisa a GestCD (misma web) de que el informe de este centro ya se ha generado
+function marcaInforme(cd) {
+  try { const m = JSON.parse(localStorage.getItem('jdev_informes') || '{}'); m[UP(cd).replace(/^0+(?=\d)/, '')] = Date.now(); localStorage.setItem('jdev_informes', JSON.stringify(m)); } catch (e) {}
+}
 async function descargarCentro(l, c, formatos) {
   const f = faltan(c); if (f.length) return toast('Falta: ' + f.join(', '), true);
   busy(true, 'Generando ' + nombreArchivo(c.centro) + '…');
   try {
-    const out = await generar(c, formatos);
+    const out = await generar(c, formatos); marcaInforme(c.centro);
     for (const k of formatos) { guardar(new Blob([out[k]], { type: MIME[k] }), nombreArchivo(c.centro) + '.' + k); await pausa(400); }
     if (ls.get('ibt_firma', null)) toast('Descargado ' + nombreArchivo(c.centro));
     else toast('Descargado sin firma. Guarda tu firma en Ajustes.', true);
@@ -805,7 +809,7 @@ async function descargarLote(lineas, formatos, enZip) {
       for (const c of l.centros) {
         n++; $('busyT').textContent = `Generando ${n} de ${total}…`;
         if (faltan(c).length) { saltados.push(c.centro || 'sin nombre'); continue; }
-        const out = await generar(c, formatos);
+        const out = await generar(c, formatos); marcaInforme(c.centro);
         let base = nombreArchivo(c.centro); usados[base] = (usados[base] || 0) + 1; if (usados[base] > 1) base += ' (' + usados[base] + ')';
         for (const k of formatos) {
           if (zip) carpeta.file(base + '.' + k, out[k]);
@@ -826,6 +830,12 @@ async function descargarLote(lineas, formatos, enZip) {
 // ---------- arranque ----------
 pintarLista(); pintarAjustes(); vista('lista');
 cargarDirecciones();
+// Abrir un centro desde GestCD: ?cd=NUMERO
+(function () {
+  const cd = new URLSearchParams(location.search).get('cd'); if (!cd) return;
+  history.replaceState(null, '', location.pathname);
+  $('rapCD').value = cd; $('rapForm').requestSubmit();
+})();
 </script>
 <script>/* App instalable y sin conexión */
 (function(){if(!('serviceWorker' in navigator)||location.protocol.indexOf('http')!==0)return;
