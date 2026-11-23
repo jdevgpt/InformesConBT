@@ -1,6 +1,6 @@
 /* Informe BT · funcionamiento sin conexión (JDev) */
-const VERSION = 'informesconbt-v5';
-const LOCALES = ["./", "./index.html", "./apple-touch-icon.png", "./direcciones.json", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./icon.svg", "./lineas.js", "./lineas.json", "./manifest.webmanifest", "./motor.js", "./plantilla.docx"];
+const VERSION = 'informesconbt-v6';
+const LOCALES = ["./", "./index.html", "./apple-touch-icon.png", "./direcciones.json", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./icon.svg", "./lineas.js", "./lineas.json", "./manifest.webmanifest", "./motor.js", "./plantilla.docx", "./plantilla_boletin.docx"];
 const EXTERNOS = ["https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js", "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js", "https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap"];
 
 self.addEventListener('install', e => {

@@ -170,7 +170,7 @@
     return { sz: sz || 22, fonts };
   }
 
-  function sinDefectosPara(doc, info, refPara) {
+  function sinDefectosPara(doc, info, refPara, texto) {
     const p = doc.createElementNS(W, 'w:p');
     const pPr = doc.createElementNS(W, 'w:pPr');
     const refStyle = refPara && kid(refPara, 'pPr') && kid(kid(refPara, 'pPr'), 'pStyle');
@@ -185,13 +185,13 @@
     const sz = doc.createElementNS(W, 'w:sz'); sz.setAttributeNS(W, 'w:val', String(info.sz + 2));
     const szCs = doc.createElementNS(W, 'w:szCs'); szCs.setAttributeNS(W, 'w:val', String(info.sz + 2));
     rPr.appendChild(sz); rPr.appendChild(szCs); r.appendChild(rPr);
-    const t = doc.createElementNS(W, 'w:t'); t.textContent = TXT_SIN; r.appendChild(t); p.appendChild(r);
+    const t = doc.createElementNS(W, 'w:t'); t.textContent = texto || TXT_SIN; r.appendChild(t); p.appendChild(r);
     return p;
   }
 
   /**
    * data = { nombre, fecha, centro, direccion, poblacion, sinDefectos, defectos:[{apoyo,linea,cod,des,obs}],
-   *          firma:{bytes,type,w,h}|null, foto:{bytes,type,w,h}|null }
+   *          firma:{bytes,type,w,h}|null, foto:{bytes,type,w,h}|null, tecnico (Boletín) }
    */
   async function generarDocx(templateBytes, data) {
     const zip = await JSZip.loadAsync(templateBytes);
@@ -207,8 +207,20 @@
 
     const map = {
       NOMBRE: data.nombre, FECHA: data.fecha, CENTRO: data.centro, DIRECCION: data.direccion,
-      'DIRECCIÓN': data.direccion, POBLACION: data.poblacion, 'POBLACIÓN': data.poblacion, PROVINCIA: data.provincia || 'Badajoz'
+      'DIRECCIÓN': data.direccion, POBLACION: data.poblacion, 'POBLACIÓN': data.poblacion, PROVINCIA: data.provincia || 'Badajoz',
+      // Boletín BT (Málaga)
+      NUM_CD: data.centro, TECNICO: data.tecnico || data.nombre, 'TÉCNICO': data.tecnico || data.nombre
     };
+    // Párrafo [FOTO] (Boletín BT): la foto del ANEXO I va justo ahí
+    const fotoPara = all(body, 'p').find(p => /\[FOTO\]/.test(ptext(p)));
+    if (fotoPara) {
+      all(fotoPara, 'r').forEach(r => r.parentNode.removeChild(r));
+      if (data.foto) {
+        const rid = await addMedia(zip, relsDoc, ctDoc, data.foto, 'anexo1');
+        const sz = fitBox(data.foto.w, data.foto.h, Math.min(5400040, Math.round(geom.textWcm * 360000)), 11.5 * 360000);
+        fotoPara.appendChild(drawingRun(doc, rid, sz.cx, sz.cy, 'AnexoI'));
+      }
+    }
 
     // 1) Tabla de defectos
     const tbl = all(body, 'tbl').find(t => /\[(COD_DEF|CODIGO_APOYO|DES_DEF)\]/.test(ptext(t)));
@@ -219,7 +231,7 @@
       if (data.sinDefectos || !data.defectos.length) {
         // referencia de tamaño: el párrafo anterior a la tabla
         let prev = tbl.previousSibling; while (prev && (prev.nodeType !== 1 || prev.localName !== 'p')) prev = prev.previousSibling;
-        const para = sinDefectosPara(doc, baseRunInfo(stylesDoc, prev), prev);
+        const para = sinDefectosPara(doc, baseRunInfo(stylesDoc, prev), prev, data.textoSinDefectos);
         body.replaceChild(para, tbl);
         tableAnchor = para;
       } else {
@@ -239,8 +251,18 @@
       }
     }
 
-    // 2) Campos sueltos
-    all(body, 'p').forEach(p => replaceInPara(p, map));
+    // 2) Campos sueltos. El número del CD del Boletín ([NUM_CD]) va en negrita y 1 punto más grande.
+    all(body, 'p').forEach(p => {
+      all(p, 'r').forEach(r => {
+        if (!/\[NUM_CD\]/.test(all(r, 't').map(t => t.textContent).join(''))) return;
+        const base = baseRunInfo(stylesDoc, p).sz;
+        let rPr = kid(r, 'rPr'); if (!rPr) { rPr = doc.createElementNS(W, 'w:rPr'); r.insertBefore(rPr, r.firstChild); }
+        ['b', 'bCs', 'sz', 'szCs'].forEach(n => { const o = kid(rPr, n); if (o) rPr.removeChild(o); });
+        rPr.appendChild(doc.createElementNS(W, 'w:b')); rPr.appendChild(doc.createElementNS(W, 'w:bCs'));
+        ['sz', 'szCs'].forEach(n => { const e = doc.createElementNS(W, 'w:' + n); e.setAttributeNS(W, 'w:val', String(base + 2)); rPr.appendChild(e); });
+      });
+      replaceInPara(p, map);
+    });
     for (const f of Object.keys(zip.files)) {
       if (/^word\/(header|footer)\d*\.xml$/.test(f)) {
         const hd = parser.parseFromString(await zip.file(f).async('string'), 'application/xml');
@@ -275,10 +297,13 @@
       const list = top();
       const start = tableAnchor ? list.indexOf(tableAnchor) + 1 : Math.max(0, list.indexOf(fdo) - 4);
       const end = list.indexOf(fdo);
+      // Se puede cortar de página antes de un bloque nuevo («Nota aclaratoria…», «Y para que conste…»),
+      // pero el último bloque siempre va junto con «Fdo.» y nunca se parte un párrafo.
+      const empiezaBloque = n => n && n.localName === 'p' && /^\s*(Nota aclaratoria|Y para que conste)/i.test(ptext(n));
       for (let i = start; i <= end; i++) {
         const n = list[i]; if (n.localName !== 'p') continue;
         setFlag(n, 'keepLines');
-        if (i < end) setFlag(n, 'keepNext');
+        if (i < end && !empiezaBloque(list.slice(i + 1).find(x => x.localName === 'p' && ptext(x).trim()))) setFlag(n, 'keepNext');
       }
       if (tableAnchor) {
         let prev = tableAnchor.previousSibling; while (prev && (prev.nodeType !== 1 || prev.localName !== 'p')) prev = prev.previousSibling;
@@ -306,9 +331,10 @@
       }
       setFlag(firstAfter, 'pageBreakBefore');
 
-      // 5) Foto del ANEXO I
+      // 5) Foto del ANEXO I (si la plantilla no trae [FOTO])
       const geomCx = Math.round(geom.textWcm * 360000);
-      if (all(anexo1, 'drawing').length) {
+      if (fotoPara) { /* ya colocada */ }
+      else if (all(anexo1, 'drawing').length) {
         if (data.foto) {
           const ext0 = all(anexo1, 'extent', NS.wp)[0];
           const bx = Math.max(+ext0.getAttribute('cx'), Math.min(geomCx - 567 * 635, 5400040));

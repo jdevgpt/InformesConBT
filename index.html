@@ -249,7 +249,9 @@ h2{letter-spacing:.1em}
     </div>
 
     <div class="card">
-      <h2>Datos del informe</h2>
+      <h2 id="tituloDatos">Datos del informe</h2>
+      <label class="f" id="campoTec" hidden><span>Técnico que revisó el centro (Boletín BT)</span><input type="text" id="fTec" list="dlTec" autocomplete="off" placeholder="p. ej. Juan Diego Bote"></label>
+      <datalist id="dlTec"></datalist>
       <div class="grid2">
         <label class="f"><span>Centro (CD)</span><input type="text" id="fCentro" class="code up" autocomplete="off" inputmode="text" placeholder="p. ej. 76900"></label>
         <label class="f"><span>Fecha de revisión</span><input type="date" id="fFecha"></label>
@@ -367,10 +369,10 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const hoy = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const fechaES = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const oracion = s => { s = String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('es-ES'); return s ? s.charAt(0).toLocaleUpperCase('es-ES') + s.slice(1) : ''; };
-const nombreArchivo = c => 'INFORME BT - ' + String(c || 'SIN CENTRO').replace(/[\\/:*?"<>|]+/g, '-').trim();
-// Málaga usa el «Boletín BT - XXXXX» en lugar del Informe BT (su plantilla está pendiente)
+const nombreArchivo = (c, bol) => (bol ? 'BOLETÍN BT - ' : 'INFORME BT - ') + String(c || 'SIN CENTRO').replace(/[\\/:*?"<>|]+/g, '-').trim();
+// Málaga usa el «Boletín BT - XXXXX» (plantilla_boletin.docx) en lugar del Informe BT: lleva el técnico que revisó y no lleva firma
 const esBoletin = c => !!c && String(c.provincia || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'MALAGA';
-const AVISO_BOLETIN = 'Centro de Málaga: lleva el Boletín BT y su plantilla aún no está en la app. No se genera para no sacarlo con el formato del Informe.';
+
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('No se pudo guardar en este dispositivo', true); } }
@@ -547,6 +549,8 @@ async function abrirCentro(lineaId, centroId) {
   if (!c) { cur = null; pintarLista(); return vista('lista'); }
   $('edLinea').textContent = l.nombre;
   $('fCentro').value = c.centro; $('fFecha').value = c.fecha || ''; $('fDir').value = c.direccion; $('fPob').value = c.poblacion; $('fProv').value = c.provincia || 'Badajoz'; $('fSin').checked = !!c.sinDefectos;
+  $('fTec').value = c.tecnico || '';
+  $('dlTec').innerHTML = [...new Set(S.lineas.flatMap(l => l.centros.map(x => x.tecnico)).filter(Boolean))].map(t => `<option value="${esc(t)}">`).join('');
   limpiarFormDef(); pintarCentro(); vista('editor');
   dirHint(c);
   const f = c.foto ? await idb.get('foto:' + c.id) : null;
@@ -557,8 +561,8 @@ function pintarCentro() {
   const c = findCentro(); if (!c) return;
   $('edTitulo').textContent = c.centro || 'Centro nuevo';
   $('edEstado').innerHTML = estadoCentro(c) + (esBoletin(c) ? ' <span class="chip-bol">📄 Boletín BT · Málaga</span>' : '');
-  ['btnWord', 'btnPdf', 'btnAmbos'].forEach(id => $(id).classList.toggle('bol', esBoletin(c)));
-  $('btnAmbos').lastChild.textContent = esBoletin(c) ? 'Boletín (pendiente)' : 'Word + PDF';
+  $('campoTec').hidden = !esBoletin(c);
+  $('tituloDatos').textContent = esBoletin(c) ? 'Datos del boletín' : 'Datos del informe';
   $('defZona').hidden = c.sinDefectos;
   $('defCount').textContent = c.sinDefectos ? '' : `${c.defectos.length} en la tabla`;
   $('defLista').innerHTML = c.defectos.map((d, i) => `
@@ -597,6 +601,7 @@ $('fPob').addEventListener('input', () => { const c = findCentro(); c.poblacion 
 // provincias de España; se recuerda la última elegida para los centros nuevos
 const PROVINCIAS = ['A Coruña', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Barcelona', 'Bizkaia', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ceuta', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gipuzkoa', 'Girona', 'Granada', 'Guadalajara', 'Huelva', 'Huesca', 'Illes Balears', 'Jaén', 'La Rioja', 'Las Palmas', 'León', 'Lleida', 'Lugo', 'Madrid', 'Málaga', 'Melilla', 'Murcia', 'Navarra', 'Ourense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Zamora', 'Zaragoza'];
 $('fProv').innerHTML = PROVINCIAS.map(p => `<option>${esc(p)}</option>`).join('');
+$('fTec').addEventListener('input', () => { const c = findCentro(); c.tecnico = $('fTec').value; save(); });
 $('fProv').addEventListener('change', () => { const c = findCentro(); c.provincia = $('fProv').value; ls.set('ibt_provincia', c.provincia); save(); pintarCentro(); });
 $('fSin').addEventListener('change', () => { const c = findCentro(); c.sinDefectos = $('fSin').checked; save(); pintarCentro(); });
 $('btnVolver').onclick = () => { cur = null; pintarLista(); vista('lista'); };
@@ -760,18 +765,25 @@ async function plantilla() {
 function dataURLBytes(u) { const b = atob(u.split(',')[1]); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
 function faltan(c) {
   const f = [];
-  if (!ls.get('ibt_nombre', '')) f.push('nombre del técnico (Ajustes)');
+  if (esBoletin(c)) { if (!String(c.tecnico || '').trim()) f.push('técnico que revisó'); }
+  else if (!ls.get('ibt_nombre', '')) f.push('nombre del técnico (Ajustes)');
   if (!c.centro) f.push('centro'); if (!c.fecha) f.push('fecha'); if (!c.direccion.trim()) f.push('dirección'); if (!c.poblacion.trim()) f.push('población');
   if (!c.sinDefectos && !c.defectos.length) f.push('defectos (o marca «Sin defectos»)');
   return f;
 }
+async function plantillaBoletin() {
+  const r = await fetch('plantilla_boletin.docx').catch(() => null);
+  if (!r || !r.ok) throw new Error('No encuentro la plantilla del Boletín BT (plantilla_boletin.docx).');
+  return new Uint8Array(await r.arrayBuffer());
+}
 async function generar(c, formatos) {
-  const tpl = await plantilla();
-  const firma = ls.get('ibt_firma', null);
+  const bol = esBoletin(c);
+  const tpl = bol ? await plantillaBoletin() : await plantilla();
+  const firma = bol ? null : ls.get('ibt_firma', null); // el boletín lo firma el ingeniero a mano
   const fotoBlob = c.foto ? await idb.get('foto:' + c.id) : null;
   const data = {
-    nombre: ls.get('ibt_nombre', ''), fecha: fechaES(c.fecha), centro: UP(c.centro), direccion: c.direccion.trim(), poblacion: c.poblacion.trim(), provincia: c.provincia || 'Badajoz',
-    sinDefectos: !!c.sinDefectos, defectos: c.defectos,
+    nombre: ls.get('ibt_nombre', ''), tecnico: bol ? String(c.tecnico || '').trim() : '', fecha: fechaES(c.fecha), centro: UP(c.centro), direccion: c.direccion.trim(), poblacion: c.poblacion.trim(), provincia: c.provincia || 'Badajoz',
+    sinDefectos: !!c.sinDefectos, defectos: c.defectos, textoSinDefectos: bol ? 'SIN DEFECTOS DETECTADOS' : '',
     firma: firma ? { bytes: dataURLBytes(firma.data), type: 'image/png', w: firma.w, h: firma.h } : null,
     foto: fotoBlob ? { bytes: new Uint8Array(await fotoBlob.arrayBuffer()), type: 'image/jpeg', w: c.foto.w, h: c.foto.h } : null
   };
@@ -794,13 +806,12 @@ function marcaInforme(cd) {
   try { const m = JSON.parse(localStorage.getItem('jdev_informes') || '{}'); m[UP(cd).replace(/^0+(?=\d)/, '')] = Date.now(); localStorage.setItem('jdev_informes', JSON.stringify(m)); } catch (e) {}
 }
 async function descargarCentro(l, c, formatos) {
-  if (esBoletin(c)) return toast(AVISO_BOLETIN, true);
   const f = faltan(c); if (f.length) return toast('Falta: ' + f.join(', '), true);
-  busy(true, 'Generando ' + nombreArchivo(c.centro) + '…');
+  busy(true, 'Generando ' + nombreArchivo(c.centro, esBoletin(c)) + '…');
   try {
     const out = await generar(c, formatos); marcaInforme(c.centro);
-    for (const k of formatos) { guardar(new Blob([out[k]], { type: MIME[k] }), nombreArchivo(c.centro) + '.' + k); await pausa(400); }
-    if (ls.get('ibt_firma', null)) toast('Descargado ' + nombreArchivo(c.centro));
+    for (const k of formatos) { guardar(new Blob([out[k]], { type: MIME[k] }), nombreArchivo(c.centro, esBoletin(c)) + '.' + k); await pausa(400); }
+    if (esBoletin(c) || ls.get('ibt_firma', null)) toast('Descargado ' + nombreArchivo(c.centro, esBoletin(c)));
     else toast('Descargado sin firma. Guarda tu firma en Ajustes.', true);
   } catch (err) { console.error(err); toast(err.message || 'No se pudo generar el informe', true); }
   busy(false);
@@ -816,9 +827,9 @@ async function descargarLote(lineas, formatos, enZip) {
       const usados = {};
       for (const c of l.centros) {
         n++; $('busyT').textContent = `Generando ${n} de ${total}…`;
-        if (esBoletin(c) || faltan(c).length) { saltados.push((c.centro || 'sin nombre') + (esBoletin(c) ? ' (Boletín Málaga)' : '')); continue; }
+        if (faltan(c).length) { saltados.push(c.centro || 'sin nombre'); continue; }
         const out = await generar(c, formatos); marcaInforme(c.centro);
-        let base = nombreArchivo(c.centro); usados[base] = (usados[base] || 0) + 1; if (usados[base] > 1) base += ' (' + usados[base] + ')';
+        let base = nombreArchivo(c.centro, esBoletin(c)); usados[base] = (usados[base] || 0) + 1; if (usados[base] > 1) base += ' (' + usados[base] + ')';
         for (const k of formatos) {
           if (zip) carpeta.file(base + '.' + k, out[k]);
           else { guardar(new Blob([out[k]], { type: MIME[k] }), base + '.' + k); await pausa(600); }
@@ -860,6 +871,7 @@ async function importarDesdeKmz() {
   const aplicar = (l, c) => {
     if (p.fecha) c.fecha = p.fecha;
     if (p.provincia) c.provincia = p.provincia;
+    if (p.tecnico) c.tecnico = p.tecnico;
     c.defectos = defs; c.sinDefectos = !defs.length; save();
     abrirCentro(l.id, c.id);
     Promise.resolve(cargarDirecciones()).then(() => { if (findCentro() === c) { aplicarDir(c); save(); } });
