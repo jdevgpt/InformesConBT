@@ -193,6 +193,8 @@ h2{letter-spacing:.1em}
 .btn.primary:active{background:#C9530F;border-color:#C9530F}
 @media (max-width:430px){header.top .jd-tile{display:none}}
 
+  .chip-bol{display:inline-block;margin-left:6px;padding:3px 10px;border-radius:20px;background:#fff1e3;border:1px solid #f3c79c;color:#b85500;font-size:12.5px;font-weight:700;vertical-align:middle}
+  .btn.bol{opacity:.55}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
@@ -366,6 +368,9 @@ const hoy = () => { const d = new Date(); return d.getFullYear() + '-' + String(
 const fechaES = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const oracion = s => { s = String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('es-ES'); return s ? s.charAt(0).toLocaleUpperCase('es-ES') + s.slice(1) : ''; };
 const nombreArchivo = c => 'INFORME BT - ' + String(c || 'SIN CENTRO').replace(/[\\/:*?"<>|]+/g, '-').trim();
+// Málaga usa el «Boletín BT - XXXXX» en lugar del Informe BT (su plantilla está pendiente)
+const esBoletin = c => !!c && String(c.provincia || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'MALAGA';
+const AVISO_BOLETIN = 'Centro de Málaga: lleva el Boletín BT y su plantilla aún no está en la app. No se genera para no sacarlo con el formato del Informe.';
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('No se pudo guardar en este dispositivo', true); } }
@@ -551,7 +556,9 @@ async function abrirCentro(lineaId, centroId) {
 function pintarCentro() {
   const c = findCentro(); if (!c) return;
   $('edTitulo').textContent = c.centro || 'Centro nuevo';
-  $('edEstado').innerHTML = estadoCentro(c);
+  $('edEstado').innerHTML = estadoCentro(c) + (esBoletin(c) ? ' <span class="chip-bol">📄 Boletín BT · Málaga</span>' : '');
+  ['btnWord', 'btnPdf', 'btnAmbos'].forEach(id => $(id).classList.toggle('bol', esBoletin(c)));
+  $('btnAmbos').lastChild.textContent = esBoletin(c) ? 'Boletín (pendiente)' : 'Word + PDF';
   $('defZona').hidden = c.sinDefectos;
   $('defCount').textContent = c.sinDefectos ? '' : `${c.defectos.length} en la tabla`;
   $('defLista').innerHTML = c.defectos.map((d, i) => `
@@ -590,7 +597,7 @@ $('fPob').addEventListener('input', () => { const c = findCentro(); c.poblacion 
 // provincias de España; se recuerda la última elegida para los centros nuevos
 const PROVINCIAS = ['A Coruña', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Barcelona', 'Bizkaia', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ceuta', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gipuzkoa', 'Girona', 'Granada', 'Guadalajara', 'Huelva', 'Huesca', 'Illes Balears', 'Jaén', 'La Rioja', 'Las Palmas', 'León', 'Lleida', 'Lugo', 'Madrid', 'Málaga', 'Melilla', 'Murcia', 'Navarra', 'Ourense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Zamora', 'Zaragoza'];
 $('fProv').innerHTML = PROVINCIAS.map(p => `<option>${esc(p)}</option>`).join('');
-$('fProv').addEventListener('change', () => { const c = findCentro(); c.provincia = $('fProv').value; ls.set('ibt_provincia', c.provincia); save(); });
+$('fProv').addEventListener('change', () => { const c = findCentro(); c.provincia = $('fProv').value; ls.set('ibt_provincia', c.provincia); save(); pintarCentro(); });
 $('fSin').addEventListener('change', () => { const c = findCentro(); c.sinDefectos = $('fSin').checked; save(); pintarCentro(); });
 $('btnVolver').onclick = () => { cur = null; pintarLista(); vista('lista'); };
 $('btnBorrarCentro').onclick = () => {
@@ -787,6 +794,7 @@ function marcaInforme(cd) {
   try { const m = JSON.parse(localStorage.getItem('jdev_informes') || '{}'); m[UP(cd).replace(/^0+(?=\d)/, '')] = Date.now(); localStorage.setItem('jdev_informes', JSON.stringify(m)); } catch (e) {}
 }
 async function descargarCentro(l, c, formatos) {
+  if (esBoletin(c)) return toast(AVISO_BOLETIN, true);
   const f = faltan(c); if (f.length) return toast('Falta: ' + f.join(', '), true);
   busy(true, 'Generando ' + nombreArchivo(c.centro) + '…');
   try {
@@ -808,7 +816,7 @@ async function descargarLote(lineas, formatos, enZip) {
       const usados = {};
       for (const c of l.centros) {
         n++; $('busyT').textContent = `Generando ${n} de ${total}…`;
-        if (faltan(c).length) { saltados.push(c.centro || 'sin nombre'); continue; }
+        if (esBoletin(c) || faltan(c).length) { saltados.push((c.centro || 'sin nombre') + (esBoletin(c) ? ' (Boletín Málaga)' : '')); continue; }
         const out = await generar(c, formatos); marcaInforme(c.centro);
         let base = nombreArchivo(c.centro); usados[base] = (usados[base] || 0) + 1; if (usados[base] > 1) base += ' (' + usados[base] + ')';
         for (const k of formatos) {
@@ -851,15 +859,16 @@ async function importarDesdeKmz() {
   });
   const aplicar = (l, c) => {
     if (p.fecha) c.fecha = p.fecha;
+    if (p.provincia) c.provincia = p.provincia;
     c.defectos = defs; c.sinDefectos = !defs.length; save();
     abrirCentro(l.id, c.id);
     Promise.resolve(cargarDirecciones()).then(() => { if (findCentro() === c) { aplicarDir(c); save(); } });
-    toast(`Centro ${n} rellenado desde el KMZ (${defs.length ? defs.length + ' defecto' + (defs.length > 1 ? 's' : '') : 'sin defectos'}). Revisa dirección, población y provincia y pon la foto del ANEXO I.`);
+    toast(`${esBoletin(c) ? 'Boletín BT' : 'Centro'} ${n} rellenado desde el KMZ (${defs.length ? defs.length + ' defecto' + (defs.length > 1 ? 's' : '') : 'sin defectos'}). Revisa dirección y población${esBoletin(c) ? '' : ', provincia'} y pon la foto del ANEXO I.`);
   };
   let l0 = null, c0 = null;
   S.lineas.forEach(l => l.centros.forEach(c => { if (!c0 && UP(c.centro).replace(/^0+(?=\d)/, '') === n) { l0 = l; c0 = c; } }));
   if (c0) {
-    confirmar(`El centro ${n} ya está en la línea ${l0.nombre}. ¿Sustituir su fecha y su tabla de defectos por las del KMZ? Se mantienen dirección, población, provincia y foto.`, 'Sustituir', () => aplicar(l0, c0));
+    confirmar(`El centro ${n} ya está en la línea ${l0.nombre}. ¿Sustituir su fecha y su tabla de defectos por las del KMZ? Se mantienen dirección, población y foto.`, 'Sustituir', () => aplicar(l0, c0));
     return;
   }
   await LineasCD.cargar();
