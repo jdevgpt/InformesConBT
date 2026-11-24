@@ -250,7 +250,7 @@ h2{letter-spacing:.1em}
 
     <div class="card">
       <h2 id="tituloDatos">Datos del informe</h2>
-      <label class="f" id="campoTec" hidden><span>Técnico que revisó el centro (Boletín BT)</span><input type="text" id="fTec" list="dlTec" autocomplete="off" placeholder="p. ej. Juan Diego Bote"></label>
+      <label class="f" id="campoTec" hidden><span>Técnico que revisó el centro (Certificado de Revisión BT)</span><input type="text" id="fTec" list="dlTec" autocomplete="off" placeholder="p. ej. Juan Diego Bote"></label>
       <datalist id="dlTec"></datalist>
       <div class="grid2">
         <label class="f"><span>Centro (CD)</span><input type="text" id="fCentro" class="code up" autocomplete="off" inputmode="text" placeholder="p. ej. 76900"></label>
@@ -367,8 +367,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const hoy = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 const fechaES = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const oracion = s => { s = String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('es-ES'); return s ? s.charAt(0).toLocaleUpperCase('es-ES') + s.slice(1) : ''; };
-const nombreArchivo = (c, bol) => (bol ? 'BOLETÍN BT - ' : 'INFORME BT - ') + String(c || 'SIN CENTRO').replace(/[\\/:*?"<>|]+/g, '-').trim();
-// Málaga usa el «Boletín BT - XXXXX» (plantilla_boletin.docx) en lugar del Informe BT: lleva el técnico que revisó y no lleva firma
+const nombreArchivo = (c, bol) => (bol ? 'CERTIFICADO DE REVISION BT - ' : 'INFORME BT - ') + String(c || 'SIN CENTRO').replace(/[\\/:*?"<>|]+/g, '-').trim();
+// Málaga usa el «CERTIFICADO DE REVISION BT - XXXXX» (plantilla_certificado.docx) en lugar del Informe BT: lleva el técnico que revisó y no lleva firma
 const esBoletin = c => !!c && String(c.provincia || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase() === 'MALAGA';
 
 const ls = {
@@ -553,9 +553,9 @@ async function abrirCentro(lineaId, centroId) {
 function pintarCentro() {
   const c = findCentro(); if (!c) return;
   $('edTitulo').textContent = c.centro || 'Centro nuevo';
-  $('edEstado').innerHTML = estadoCentro(c) + (esBoletin(c) ? ' <span class="chip-bol">📄 Boletín BT · Málaga</span>' : '');
+  $('edEstado').innerHTML = estadoCentro(c) + (esBoletin(c) ? ' <span class="chip-bol">📄 Certificado de Revisión BT · Málaga</span>' : '');
   $('campoTec').hidden = !esBoletin(c);
-  $('tituloDatos').textContent = esBoletin(c) ? 'Datos del boletín' : 'Datos del informe';
+  $('tituloDatos').textContent = esBoletin(c) ? 'Datos del certificado' : 'Datos del informe';
   $('defZona').hidden = c.sinDefectos;
   $('defCount').textContent = c.sinDefectos ? '' : `${c.defectos.length} en la tabla`;
   $('defLista').innerHTML = c.defectos.map((d, i) => `
@@ -765,14 +765,14 @@ function faltan(c) {
   return f;
 }
 async function plantillaBoletin() {
-  const r = await fetch('plantilla_boletin.docx').catch(() => null);
-  if (!r || !r.ok) throw new Error('No encuentro la plantilla del Boletín BT (plantilla_boletin.docx).');
+  const r = await fetch('plantilla_certificado.docx').catch(() => null);
+  if (!r || !r.ok) throw new Error('No encuentro la plantilla del Certificado de Revisión BT (plantilla_certificado.docx).');
   return new Uint8Array(await r.arrayBuffer());
 }
 async function generar(c, formatos) {
   const bol = esBoletin(c);
   const tpl = bol ? await plantillaBoletin() : await plantilla();
-  const firma = bol ? null : ls.get('ibt_firma', null); // el boletín lo firma el ingeniero a mano
+  const firma = bol ? null : ls.get('ibt_firma', null); // el certificado lo firma el ingeniero a mano
   const fotoBlob = c.foto ? await idb.get('foto:' + c.id) : null;
   const data = {
     nombre: ls.get('ibt_nombre', ''), tecnico: bol ? String(c.tecnico || '').trim() : '', fecha: fechaES(c.fecha), centro: UP(c.centro), direccion: c.direccion.trim(), poblacion: c.poblacion.trim(), provincia: c.provincia || 'Badajoz',
@@ -868,7 +868,7 @@ async function importarDesdeKmz() {
     c.defectos = defs; c.sinDefectos = !defs.length; save();
     abrirCentro(l.id, c.id);
     Promise.resolve(cargarDirecciones()).then(() => { if (findCentro() === c) { aplicarDir(c); save(); } });
-    toast(`${esBoletin(c) ? 'Boletín BT' : 'Centro'} ${n} rellenado desde el KMZ (${defs.length ? defs.length + ' defecto' + (defs.length > 1 ? 's' : '') : 'sin defectos'}). Revisa dirección y población${esBoletin(c) ? '' : ', provincia'} y pon la foto del ANEXO I.`);
+    toast(`${esBoletin(c) ? 'Certificado BT' : 'Centro'} ${n} rellenado desde el KMZ (${defs.length ? defs.length + ' defecto' + (defs.length > 1 ? 's' : '') : 'sin defectos'}). Revisa dirección y población${esBoletin(c) ? '' : ', provincia'} y pon la foto del ANEXO I.`);
   };
   let l0 = null, c0 = null;
   S.lineas.forEach(l => l.centros.forEach(c => { if (!c0 && UP(c.centro).replace(/^0+(?=\d)/, '') === n) { l0 = l; c0 = c; } }));
